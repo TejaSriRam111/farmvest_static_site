@@ -1,0 +1,27 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: Ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: Ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v2
+      - name: Deploy
+        run: npm run deploy
+
+# DEPLOYMENT_URL: https://example.com
