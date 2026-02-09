@@ -1,0 +1,75 @@
+name: Azure VM Nginx Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - name: Set up SSH key for Azure VM
+        uses: azure/login@v1
+        with:
+          credentials: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create or update SSH config file
+        run: |
+          if [ ! -f ~/.ssh/config ]; then
+            echo "Host my-azure-vm" >> ~/.ssh/config
+            echo "  HostName ${{ secrets.AZURE_VM_HOSTNAME }}" >> ~/.ssh/config
+            echo "  User ${{ secrets.AZURE_SSH_USER }}" >> ~/.ssh/config
+            echo "  IdentityFile ${{ secrets.AZURE_SSH_KEY_PATH }}" >> ~/.ssh/config
+          fi
+
+      - name: Check if package.json exists
+        run: |
+          if [ ! -f package.json ]; then
+            echo "No package.json found. Deploying repository root."
+            working-dir: ${{ github.workspace }}
+            continue: deploy-root
+          fi
+
+      - name: Install dependencies and build
+        run: |
+          cd ${{ github.workspace }} && npm install && npm run build
+
+      - name: Check if build/ exists
+        run: |
+          if [ -d build ]; then
+            echo "Build directory found. Deploying build/*"
+            continue: deploy-build
+          fi
+
+      - name: Check if dist/ exists
+        run: |
+          if [ -d dist ]; then
+            echo "dist directory found. Deploying dist/*"
+            continue: deploy-dist
+          fi
+
+      - name: Deploy repository root (fallback)
+        working-dir: ${{ github.workspace }}
+        uses: appleboy/ssh-action@master
+        with:
+          host: 'my-azure-vm'
+          username: '${{ secrets.AZURE_SSH_USER }}'
+          port: '22'
+          key: ${{ secrets.AZURE_SSH_KEY }}
+          auto-open-ssh: true
+          script: scp -r ./* my-azure-vm:/var/www/html
+
+      - name: Restart nginx on Azure VM
+        uses: appleboy/ssh-action@master
+        with:
+          host: 'my-azure-vm'
+          username: '${{ secrets.AZURE_SSH_USER }}'
+          port: '22'
+          key: ${{ secrets.AZURE_SSH_KEY }}
+          auto-open-ssh: true
+          script: sudo systemctl restart nginx
